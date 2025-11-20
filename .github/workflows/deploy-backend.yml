@@ -1,0 +1,82 @@
+name: Deploy Backend (Laravel)
+
+on:
+  push:
+    
+    branches:
+      - 12.x
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.BACKEND_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          envs: DB_HOST,DB_USERNAME,DB_PASSWORD,DB_DATABASE
+          script: |
+            export DB_HOST=${{ secrets.DB_HOST }}
+            export DB_USERNAME=${{ secrets.DB_USERNAME }}
+            export DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            export DB_DATABASE=${{ secrets.DB_DATABASE }}
+            
+            TARGET_DIR="/var/www/html/backend"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+            
+            echo "🚀 Starting Deployment..."
+
+            # 1. Check if repo exists, if not clone it, else pull
+            if [ ! -d "$TARGET_DIR/.git" ]; then
+                echo "Cloning repository..."
+                sudo git clone $REPO_URL $TARGET_DIR
+                sudo chown -R ubuntu:ubuntu $TARGET_DIR
+            else
+                echo "Pulling latest changes..."
+                cd $TARGET_DIR
+                git reset --hard
+                git pull origin main
+            fi
+
+            cd $TARGET_DIR
+
+            # 2. Install Dependencies
+            echo "Installing Composer Dependencies..."
+            composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+            # 3. Configure .env file (Dynamically create it)
+            echo "Configuring Environment..."
+            cp .env.example .env
+            
+            # Update .env with Secrets
+            sed -i "s/DB_HOST=127.0.0.1/DB_HOST=$DB_HOST/" .env
+            sed -i "s/DB_DATABASE=laravel/DB_DATABASE=$DB_DATABASE/" .env
+            sed -i "s/DB_USERNAME=root/DB_USERNAME=$DB_USERNAME/" .env
+            sed -i "s/DB_PASSWORD=/DB_PASSWORD=$DB_PASSWORD/" .env
+            sed -i "s/APP_ENV=local/APP_ENV=production/" .env
+            sed -i "s/APP_DEBUG=true/APP_DEBUG=false/" .env
+
+            # Generate Key if not set
+            php artisan key:generate --force
+
+            # 4. Run Migrations (Task requirement)
+            echo "Running Migrations..."
+            php artisan migrate --force
+
+            # 5. Fix Permissions
+            echo "Fixing Permissions..."
+            sudo chown -R www-data:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+
+            # 6. Optimize Cache
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
+            echo "✅ Deployment & Migration Finished!"
