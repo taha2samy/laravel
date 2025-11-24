@@ -54,7 +54,7 @@ jobs:
             APP_NAME=Laravel
             APP_ENV=production
             APP_KEY=${{ secrets.APP_KEY }}
-            APP_DEBUG=false
+            APP_DEBUG=true
             APP_URL=http://${{ vars.BACKEND_HOST }}
             
             DB_CONNECTION=mysql
