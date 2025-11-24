@@ -24,11 +24,11 @@ jobs:
             # 1. Stop script on any error
             set -e
 
-            echo "🚀 Starting Deployment..."
             
-            # 2. Navigate to project directory
+            sudo mkdir -p /var/www/html/backend
+            sudo chown -R $USER:$USER /var/www/html/backend
             cd /var/www/html/backend
-            
+                        
             # 3. Clone or Pull Code (Branch: 12.x)
             if [ ! -d ".git" ]; then
                 echo "Repository not found. Cloning branch 12.x..."
