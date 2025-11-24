@@ -80,6 +80,7 @@ jobs:
 
             # 6. Run Migrations & Optimizations
             echo "Running Migrations..."
+            sudo php artisan key:generate
             php artisan migrate --force
 
             echo "Optimizing Cache..."
