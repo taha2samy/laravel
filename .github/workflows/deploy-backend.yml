@@ -29,7 +29,6 @@ jobs:
             sudo chown -R $USER:$USER /var/www/html/backend
             cd /var/www/html/backend
             if ! command -v composer &> /dev/null; then
-                echo "⚠️ Composer not found. Installing globally..."
                 curl -sS https://getcomposer.org/installer | php
                 sudo mv composer.phar /usr/local/bin/composer
                 sudo chmod +x /usr/local/bin/composer
@@ -54,9 +53,9 @@ jobs:
             echo "Generating .env file..."
             cat <<EOF > .env
             APP_NAME=Laravel
-            APP_ENV=production
+            APP_ENV=deployment
             APP_KEY=${{ secrets.APP_KEY }}
-            APP_DEBUG=false
+            APP_DEBUG=true
             APP_URL=http://${{ vars.BACKEND_HOST }}
             
             DB_CONNECTION=mysql
