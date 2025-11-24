@@ -28,7 +28,13 @@ jobs:
             sudo mkdir -p /var/www/html/backend
             sudo chown -R $USER:$USER /var/www/html/backend
             cd /var/www/html/backend
-                        
+            if ! command -v composer &> /dev/null; then
+                echo "⚠️ Composer not found. Installing globally..."
+                curl -sS https://getcomposer.org/installer | php
+                sudo mv composer.phar /usr/local/bin/composer
+                sudo chmod +x /usr/local/bin/composer
+            fi
+
             # 3. Clone or Pull Code (Branch: 12.x)
             if [ ! -d ".git" ]; then
                 echo "Repository not found. Cloning branch 12.x..."
