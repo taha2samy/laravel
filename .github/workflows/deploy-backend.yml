@@ -1,95 +1,93 @@
-name: "Setup New Laravel Server"
+name: Deploy Laravel Backend
 
 on:
-  # This workflow is manual only. You run it once per new server.
-  workflow_dispatch: {}
+  workflow_dispatch: # Manual trigger
+  push:
+    branches: [ "x.12" ] # Trigger on push to branch x.12
 
 jobs:
-  setup-server:
+  deploy:
     runs-on: ubuntu-latest
-    name: Prepare Server for Laravel
+    environment:
+      name: deployment
+      url: http://${{ vars.BACKEND_HOST }}
 
     steps:
-      - name: Configure Server via SSH
+      - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.BACKEND_HOST }}
+          host: ${{ vars.BACKEND_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            echo "🚀 Starting server setup..."
-            # Use DEBIAN_FRONTEND to avoid interactive prompts during installation
-            export DEBIAN_FRONTEND=noninteractive
+            # 1. Stop script on any error
+            set -e
 
-            # --- 1. Install System Dependencies ---
-            echo "Installing PHP, Composer, and other utilities..."
-            sudo apt-get update -y
-            # Install PHP 8.2 (common for modern Laravel) and required extensions
-            sudo apt-get install -y php8.2-fpm php8.2-mysql php8.2-xml php8.2-mbstring php8.2-curl php8.2-bcmath composer git unzip
+            echo "🚀 Starting Deployment..."
             
-            # --- 2. Create Project Directory & Set Permissions ---
-            echo "Creating project directory..."
-            # Create the directory where the code will live
-            sudo mkdir -p /var/www/html/backend
-            # Give ownership to the 'ubuntu' user so it can clone without sudo
-            sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} /var/www/html/backend
+            # 2. Navigate to project directory
+            cd /var/www/html/backend
+            
+            # 3. Clone or Pull Code (Branch: x.12)
+            if [ ! -d ".git" ]; then
+                echo "Repository not found. Cloning branch x.12..."
+                # Clear directory to avoid conflicts
+                rm -rf * 
+                # Clone specific branch
+                git clone -b x.12 https://github.com/${{ github.repository }}.git .
+            else
+                echo "Repository exists. Pulling latest changes from x.12..."
+                git reset --hard
+                git fetch origin x.12
+                git checkout x.12
+                git pull origin x.12
+            fi
 
-            # --- 3. Configure Nginx ---
-            echo "Configuring Nginx site..."
-            # Create a new Nginx configuration file for our Laravel site
-            # We use a HEREDOC (<<'EOF') to write a multi-line file
-            sudo bash -c "cat > /etc/nginx/sites-available/backend" <<'EOF'
-            server {
-                listen 80;
-                server_name ${{ secrets.BACKEND_HOST }};
-                root /var/www/html/backend/public;
-
-                add_header X-Frame-Options "SAMEORIGIN";
-                add_header X-XSS-Protection "1; mode=block";
-                add_header X-Content-Type-Options "nosniff";
-
-                index index.php;
-
-                charset utf-8;
-
-                location / {
-                    try_files \$uri \$uri/ /index.php?\$query_string;
-                }
-
-                location = /favicon.ico { access_log off; log_not_found off; }
-                location = /robots.txt  { access_log off; log_not_found off; }
-
-                error_page 404 /index.php;
-
-                location ~ \.php$ {
-                    include snippets/fastcgi-php.conf;
-                    # Make sure the PHP version matches what was installed
-                    fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
-                }
-
-                location ~ /\.(?!well-known).* {
-                    deny all;
-                }
-            }
+            # 4. Create .env File from Secrets
+            echo "Generating .env file..."
+            cat <<EOF > .env
+            APP_NAME=Laravel
+            APP_ENV=production
+            APP_KEY=${{ secrets.APP_KEY }}
+            APP_DEBUG=false
+            APP_URL=http://${{ vars.BACKEND_HOST }}
+            
+            DB_CONNECTION=mysql
+            DB_HOST=${{ secrets.DB_HOST }}
+            DB_PORT=3306
+            DB_DATABASE=${{ secrets.DB_DATABASE }}
+            DB_USERNAME=${{ secrets.DB_USERNAME }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            
+            BROADCAST_DRIVER=log
+            CACHE_DRIVER=file
+            FILESYSTEM_DISK=local
+            QUEUE_CONNECTION=sync
+            SESSION_DRIVER=file
+            SESSION_LIFETIME=120
             EOF
 
-            # --- 4. Enable the New Nginx Site ---
-            echo "Enabling Nginx site..."
-            # Create a symbolic link to enable the site
-            sudo ln -s /etc/nginx/sites-available/backend /etc/nginx/sites-enabled/
-            # Remove the default Nginx configuration to avoid conflicts
-            sudo rm /etc/nginx/sites-enabled/default
-            
-            # Test Nginx configuration for syntax errors
-            sudo nginx -t
-            # Reload Nginx to apply the new configuration
-            sudo systemctl reload nginx
+            # 5. Install Dependencies
+            echo "Installing Composer Dependencies..."
+            export COMPOSER_ALLOW_SUPERUSER=1
+            composer install --no-dev --optimize-autoloader
 
-            # --- 5. Configure Firewall ---
-            echo "Configuring Firewall (UFW)..."
-            sudo ufw allow 'Nginx Full'
-            # Enable the firewall, '--force' is needed for non-interactive scripts
-            sudo ufw --force enable
+            # 6. Run Migrations & Optimizations
+            echo "Running Migrations..."
+            php artisan migrate --force
 
-            echo "✅ Server Setup Completed Successfully!"
+            echo "Optimizing Cache..."
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
+            # 7. Fix Permissions
+            echo "Fixing Permissions..."
+            sudo chown -R www-data:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+
+            # 8. Restart FPM to clear OPcache
+            sudo systemctl reload php8.2-fpm
+
+            echo "✅ Deployment Finished Successfully!"
