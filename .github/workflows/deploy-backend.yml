@@ -1,9 +1,9 @@
 name: Deploy Laravel Backend
 
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
   push:
-    branches: [ "12.x" ] # Trigger on push to branch 12.x
+    branches: [ "12.x" ]
 
 jobs:
   deploy:
@@ -21,41 +21,40 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            # 1. Stop script on any error
             set -e
 
-            
+            echo "🚀 Starting Deployment..."
+
+            # Ensure directory exists and has permissions
             sudo mkdir -p /var/www/html/backend
             sudo chown -R $USER:$USER /var/www/html/backend
+            
             cd /var/www/html/backend
+
+            # Check & Install Composer
             if ! command -v composer &> /dev/null; then
                 curl -sS https://getcomposer.org/installer | php
                 sudo mv composer.phar /usr/local/bin/composer
                 sudo chmod +x /usr/local/bin/composer
             fi
 
-            # 3. Clone or Pull Code (Branch: 12.x)
+            # Git Operations (Branch 12.x)
             if [ ! -d ".git" ]; then
-                echo "Repository not found. Cloning branch 12.x..."
-                # Clear directory to avoid conflicts
                 rm -rf * 
-                # Clone specific branch
                 git clone -b 12.x https://github.com/${{ github.repository }}.git .
             else
-                echo "Repository exists. Pulling latest changes from 12.x..."
                 git reset --hard
                 git fetch origin 12.x
                 git checkout 12.x
                 git pull origin 12.x
             fi
 
-            # 4. Create .env File from Secrets
-            echo "Generating .env file..."
+            # Configure Environment
             cat <<EOF > .env
             APP_NAME=Laravel
-            APP_ENV=deployment
+            APP_ENV=production
             APP_KEY=${{ secrets.APP_KEY }}
-            APP_DEBUG=true
+            APP_DEBUG=false
             APP_URL=http://${{ vars.BACKEND_HOST }}
             
             DB_CONNECTION=mysql
@@ -73,26 +72,22 @@ jobs:
             SESSION_LIFETIME=120
             EOF
 
-            # 5. Install Dependencies
-            echo "Installing Composer Dependencies..."
+            # Install Dependencies
             export COMPOSER_ALLOW_SUPERUSER=1
             composer install --no-dev --optimize-autoloader
 
-            # 6. Run Migrations & Optimizations
-            echo "Running Migrations..."
+            # Migrations & Optimization
             php artisan migrate --force
 
-            echo "Optimizing Cache..."
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
 
-            # 7. Fix Permissions
-            echo "Fixing Permissions..."
+            # Fix Permissions
             sudo chown -R www-data:www-data storage bootstrap/cache
             sudo chmod -R 775 storage bootstrap/cache
 
-            # 8. Restart FPM to clear OPcache
+            # Reload Service
             sudo systemctl reload php8.2-fpm
 
             echo "✅ Deployment Finished Successfully!"
