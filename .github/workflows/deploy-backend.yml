@@ -3,7 +3,7 @@ name: Deploy Laravel Backend
 on:
   workflow_dispatch: # Manual trigger
   push:
-    branches: [ "x.12" ] # Trigger on push to branch x.12
+    branches: [ "12.x" ] # Trigger on push to branch 12.x
 
 jobs:
   deploy:
@@ -29,19 +29,19 @@ jobs:
             # 2. Navigate to project directory
             cd /var/www/html/backend
             
-            # 3. Clone or Pull Code (Branch: x.12)
+            # 3. Clone or Pull Code (Branch: 12.x)
             if [ ! -d ".git" ]; then
-                echo "Repository not found. Cloning branch x.12..."
+                echo "Repository not found. Cloning branch 12.x..."
                 # Clear directory to avoid conflicts
                 rm -rf * 
                 # Clone specific branch
-                git clone -b x.12 https://github.com/${{ github.repository }}.git .
+                git clone -b 12.x https://github.com/${{ github.repository }}.git .
             else
-                echo "Repository exists. Pulling latest changes from x.12..."
+                echo "Repository exists. Pulling latest changes from 12.x..."
                 git reset --hard
-                git fetch origin x.12
-                git checkout x.12
-                git pull origin x.12
+                git fetch origin 12.x
+                git checkout 12.x
+                git pull origin 12.x
             fi
 
             # 4. Create .env File from Secrets
